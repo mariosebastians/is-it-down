@@ -19,13 +19,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
+	gdb, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("connect to database: %v", err)
 	}
-	defer pool.Close()
+	if err := db.AutoMigrate(gdb, &store.Monitor{}, &store.Check{}); err != nil {
+		log.Fatalf("migrate database: %v", err)
+	}
 
-	s := store.New(pool)
+	s := store.New(gdb)
 	sched := scheduler.New(s, 10*time.Second)
 
 	log.Println("worker started, polling monitors")

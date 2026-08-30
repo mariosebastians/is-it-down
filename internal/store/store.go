@@ -4,148 +4,101 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/gorm"
 )
 
 type Store struct {
-	pool *pgxpool.Pool
+	db *gorm.DB
 }
 
-func New(pool *pgxpool.Pool) *Store {
-	return &Store{pool: pool}
+func New(db *gorm.DB) *Store {
+	return &Store{db: db}
 }
 
 func (s *Store) CreateMonitor(ctx context.Context, m Monitor) (Monitor, error) {
-	const q = `
-		INSERT INTO monitors (name, url, interval_seconds, timeout_seconds)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, name, url, interval_seconds, timeout_seconds, created_at`
-
-	var out Monitor
-	err := s.pool.QueryRow(ctx, q, m.Name, m.URL, m.IntervalSeconds, m.TimeoutSeconds).Scan(
-		&out.ID, &out.Name, &out.URL, &out.IntervalSeconds, &out.TimeoutSeconds, &out.CreatedAt,
-	)
-	if err != nil {
+	if err := s.db.WithContext(ctx).Create(&m).Error; err != nil {
 		return Monitor{}, fmt.Errorf("create monitor: %w", err)
 	}
-	return out, nil
+	return m, nil
 }
 
 func (s *Store) ListMonitors(ctx context.Context) ([]Monitor, error) {
-	const q = `
-		SELECT id, name, url, interval_seconds, timeout_seconds, created_at
-		FROM monitors
-		ORDER BY created_at DESC`
-
-	rows, err := s.pool.Query(ctx, q)
-	if err != nil {
+	var monitors []Monitor
+	if err := s.db.WithContext(ctx).Order("created_at DESC").Find(&monitors).Error; err != nil {
 		return nil, fmt.Errorf("list monitors: %w", err)
-	}
-	defer rows.Close()
-
-	monitors, err := pgx.CollectRows(rows, pgx.RowToStructByName[Monitor])
-	if err != nil {
-		return nil, fmt.Errorf("scan monitors: %w", err)
 	}
 	return monitors, nil
 }
 
 func (s *Store) GetMonitor(ctx context.Context, id string) (Monitor, error) {
-	const q = `
-		SELECT id, name, url, interval_seconds, timeout_seconds, created_at
-		FROM monitors
-		WHERE id = $1`
-
-	var out Monitor
-	err := s.pool.QueryRow(ctx, q, id).Scan(
-		&out.ID, &out.Name, &out.URL, &out.IntervalSeconds, &out.TimeoutSeconds, &out.CreatedAt,
-	)
-	if err != nil {
+	var m Monitor
+	if err := s.db.WithContext(ctx).First(&m, "id = ?", id).Error; err != nil {
 		return Monitor{}, fmt.Errorf("get monitor: %w", err)
 	}
-	return out, nil
+	return m, nil
 }
 
 func (s *Store) UpdateMonitor(ctx context.Context, id string, m Monitor) (Monitor, error) {
-	const q = `
-		UPDATE monitors
-		SET name = $2, url = $3, interval_seconds = $4, timeout_seconds = $5
-		WHERE id = $1
-		RETURNING id, name, url, interval_seconds, timeout_seconds, created_at`
-
-	var out Monitor
-	err := s.pool.QueryRow(ctx, q, id, m.Name, m.URL, m.IntervalSeconds, m.TimeoutSeconds).Scan(
-		&out.ID, &out.Name, &out.URL, &out.IntervalSeconds, &out.TimeoutSeconds, &out.CreatedAt,
-	)
-	if err != nil {
-		return Monitor{}, fmt.Errorf("update monitor: %w", err)
+	updates := map[string]any{
+		"name":             m.Name,
+		"url":              m.URL,
+		"interval_seconds": m.IntervalSeconds,
+		"timeout_seconds":  m.TimeoutSeconds,
 	}
-	return out, nil
+
+	result := s.db.WithContext(ctx).Model(&Monitor{}).Where("id = ?", id).Updates(updates)
+	if result.Error != nil {
+		return Monitor{}, fmt.Errorf("update monitor: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return Monitor{}, gorm.ErrRecordNotFound
+	}
+	return s.GetMonitor(ctx, id)
 }
 
 func (s *Store) DeleteMonitor(ctx context.Context, id string) error {
-	const q = `DELETE FROM monitors WHERE id = $1`
-
-	tag, err := s.pool.Exec(ctx, q, id)
-	if err != nil {
-		return fmt.Errorf("delete monitor: %w", err)
+	result := s.db.WithContext(ctx).Delete(&Monitor{}, "id = ?", id)
+	if result.Error != nil {
+		return fmt.Errorf("delete monitor: %w", result.Error)
 	}
-	if tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
 	}
 	return nil
 }
 
 func (s *Store) CreateCheck(ctx context.Context, c Check) error {
-	const q = `
-		INSERT INTO checks (monitor_id, status, status_code, response_time_ms, error)
-		VALUES ($1, $2, $3, $4, $5)`
-
-	_, err := s.pool.Exec(ctx, q, c.MonitorID, c.Status, c.StatusCode, c.ResponseTimeMS, c.Error)
-	if err != nil {
+	if err := s.db.WithContext(ctx).Create(&c).Error; err != nil {
 		return fmt.Errorf("create check: %w", err)
 	}
 	return nil
 }
 
 func (s *Store) ListChecks(ctx context.Context, monitorID string, limit int) ([]Check, error) {
-	const q = `
-		SELECT id, monitor_id, status, status_code, response_time_ms, error, checked_at
-		FROM checks
-		WHERE monitor_id = $1
-		ORDER BY checked_at DESC
-		LIMIT $2`
-
-	rows, err := s.pool.Query(ctx, q, monitorID, limit)
+	var checks []Check
+	err := s.db.WithContext(ctx).
+		Where("monitor_id = ?", monitorID).
+		Order("checked_at DESC").
+		Limit(limit).
+		Find(&checks).Error
 	if err != nil {
 		return nil, fmt.Errorf("list checks: %w", err)
-	}
-	defer rows.Close()
-
-	checks, err := pgx.CollectRows(rows, pgx.RowToStructByName[Check])
-	if err != nil {
-		return nil, fmt.Errorf("scan checks: %w", err)
 	}
 	return checks, nil
 }
 
+// LatestCheckByMonitor returns the most recent check for every monitor that
+// has at least one, keyed by monitor ID. DISTINCT ON is Postgres-specific,
+// so this goes through Raw rather than the query builder.
 func (s *Store) LatestCheckByMonitor(ctx context.Context) (map[string]Check, error) {
-	const q = `
+	var checks []Check
+	err := s.db.WithContext(ctx).Raw(`
 		SELECT DISTINCT ON (monitor_id)
 			id, monitor_id, status, status_code, response_time_ms, error, checked_at
 		FROM checks
-		ORDER BY monitor_id, checked_at DESC`
-
-	rows, err := s.pool.Query(ctx, q)
+		ORDER BY monitor_id, checked_at DESC`).Scan(&checks).Error
 	if err != nil {
 		return nil, fmt.Errorf("latest checks: %w", err)
-	}
-	defer rows.Close()
-
-	checks, err := pgx.CollectRows(rows, pgx.RowToStructByName[Check])
-	if err != nil {
-		return nil, fmt.Errorf("scan latest checks: %w", err)
 	}
 
 	out := make(map[string]Check, len(checks))

@@ -1,0 +1,277 @@
+basePath: /
+definitions:
+  httpapi.monitorInput:
+    properties:
+      interval_seconds:
+        type: integer
+      name:
+        type: string
+      timeout_seconds:
+        type: integer
+      url:
+        type: string
+    type: object
+  httpapi.statusEntry:
+    properties:
+      latest_check:
+        $ref: '#/definitions/store.Check'
+      monitor:
+        $ref: '#/definitions/store.Monitor'
+    type: object
+  store.Check:
+    properties:
+      checked_at:
+        type: string
+      error:
+        type: string
+      id:
+        type: string
+      monitor_id:
+        type: string
+      response_time_ms:
+        type: integer
+      status:
+        type: string
+      status_code:
+        type: integer
+    type: object
+  store.Monitor:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      interval_seconds:
+        type: integer
+      name:
+        type: string
+      timeout_seconds:
+        type: integer
+      url:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Self-hosted uptime and status monitoring API. Manages monitors and
+    exposes their check history and live status.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: is-it-down API
+  version: "1.0"
+paths:
+  /healthz:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Liveness check
+      tags:
+      - health
+  /monitors:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/store.Monitor'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: List monitors
+      tags:
+      - monitors
+    post:
+      consumes:
+      - application/json
+      description: Create a new monitor to be polled on its own interval
+      parameters:
+      - description: Monitor to create
+        in: body
+        name: monitor
+        required: true
+        schema:
+          $ref: '#/definitions/httpapi.monitorInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/store.Monitor'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create a monitor
+      tags:
+      - monitors
+  /monitors/{id}:
+    delete:
+      description: Deletes a monitor and cascades its check history
+      parameters:
+      - description: Monitor ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete a monitor
+      tags:
+      - monitors
+    get:
+      parameters:
+      - description: Monitor ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/store.Monitor'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get a monitor
+      tags:
+      - monitors
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Monitor ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated monitor fields
+        in: body
+        name: monitor
+        required: true
+        schema:
+          $ref: '#/definitions/httpapi.monitorInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/store.Monitor'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Update a monitor
+      tags:
+      - monitors
+  /monitors/{id}/checks:
+    get:
+      parameters:
+      - description: Monitor ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/store.Check'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: List recent checks for a monitor
+      tags:
+      - monitors
+  /status:
+    get:
+      description: Returns every monitor together with its most recent check result
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/httpapi.statusEntry'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Live status of every monitor
+      tags:
+      - status
+swagger: "2.0"

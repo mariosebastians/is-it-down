@@ -59,7 +59,7 @@ func (s *Scheduler) reconcile(ctx context.Context) {
 		seen[m.ID] = true
 
 		if existing, ok := s.running[m.ID]; ok {
-			if existing.monitor == m {
+			if pollingUnchanged(existing.monitor, m) {
 				continue
 			}
 			existing.cancel()
@@ -76,6 +76,15 @@ func (s *Scheduler) reconcile(ctx context.Context) {
 			delete(s.running, id)
 		}
 	}
+}
+
+// pollingUnchanged reports whether a and b differ only in fields that don't
+// affect how a monitor is polled, so its goroutine doesn't need a restart.
+func pollingUnchanged(a, b store.Monitor) bool {
+	return a.Name == b.Name &&
+		a.URL == b.URL &&
+		a.IntervalSeconds == b.IntervalSeconds &&
+		a.TimeoutSeconds == b.TimeoutSeconds
 }
 
 func (s *Scheduler) pollMonitor(ctx context.Context, m store.Monitor) {
