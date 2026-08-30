@@ -68,7 +68,7 @@ Monitors are polled concurrently and independently, each on its own interval. Th
 | Database       | PostgreSQL 16                                                  |
 | ORM            | [GORM](https://gorm.io) (`AutoMigrate`-managed schema, Postgres driver over `pgx`) |
 | API docs       | [Swaggo](https://github.com/swaggo/swag) (annotations → OpenAPI 2.0 → Swagger UI) |
-| HTTP routing   | Standard library `net/http` (Go 1.22+ method/path patterns)    |
+| HTTP routing   | [go-chi/chi](https://github.com/go-chi/chi) + its `middleware` package (request ID, logging, panic recovery, timeout) |
 | Concurrency    | Goroutines + `context` per monitor, ticker-driven scheduling   |
 | Local infra    | Docker Compose (Postgres)                                      |
 

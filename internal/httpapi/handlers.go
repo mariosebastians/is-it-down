@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 
 	"isitdown/internal/store"
@@ -104,7 +105,7 @@ func (s *Server) handleListMonitors(w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string
 // @Router       /monitors/{id} [get]
 func (s *Server) handleGetMonitor(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := chi.URLParam(r, "id")
 	m, err := s.store.GetMonitor(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -130,7 +131,7 @@ func (s *Server) handleGetMonitor(w http.ResponseWriter, r *http.Request) {
 // @Failure      500      {object}  map[string]string
 // @Router       /monitors/{id} [put]
 func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := chi.URLParam(r, "id")
 
 	var in monitorInput
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -175,7 +176,7 @@ func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string
 // @Router       /monitors/{id} [delete]
 func (s *Server) handleDeleteMonitor(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := chi.URLParam(r, "id")
 	if err := s.store.DeleteMonitor(r.Context(), id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			writeError(w, http.StatusNotFound, "monitor not found")
@@ -196,7 +197,7 @@ func (s *Server) handleDeleteMonitor(w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string
 // @Router       /monitors/{id}/checks [get]
 func (s *Server) handleListChecks(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := chi.URLParam(r, "id")
 	checks, err := s.store.ListChecks(r.Context(), id, 50)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list checks")
